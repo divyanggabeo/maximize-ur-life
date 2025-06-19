@@ -74,7 +74,8 @@ if st.button("Calculate"):
     final_net = df['End Net Worth'].iloc[-1]
 
     # Optimized spending to near zero
-    spend_to_zero, zero_track = calculate_targeted_spending(net_worth, income, expenses, years, growth, inflation, 0.1)
+    spend_to_zero, zero_track = calculate_targeted_spending_fixed(net_worth, income, expenses, years, growth, inflation, 0.1)
+
 
     # --- Output Summary ---
     st.success(f"✅ Sustainable Spending: ${sustainable_spend:,.2f} / year")
