@@ -36,17 +36,35 @@ def calculate_sustainable_spending(net_worth, income, expenses, years, growth, i
         net_worth = year_net
     return sustainable_spend, pd.DataFrame(year_data)
 
-def calculate_targeted_spending(net_worth, income, expenses, years, growth, inflation, target_pct=0.1):
+def calculate_targeted_spending_fixed(net_worth, income, expenses, years, growth, inflation, target_pct=0.1):
     target_end = net_worth * target_pct
-    real_growth = (1 + growth) / (1 + inflation) - 1
-    pv_factor = sum([1 / ((1 + real_growth) ** t) for t in range(1, years + 1)])
-    spend_to_zero = (net_worth - target_end + (income - expenses) * years) / pv_factor
 
-    track = []
-    for year in range(years):
-        net_worth = net_worth * (1 + growth) + income - expenses - spend_to_zero
-        track.append(net_worth)
-    return spend_to_zero, track
+    def simulate(spend):
+        nw = net_worth
+        for _ in range(years):
+            nw = nw * (1 + growth) + income - expenses - spend
+        return nw
+
+    # Use binary search to find spend that ends close to target_end
+    low = 0
+    high = (net_worth + income * years)  # overshoot range
+    for _ in range(100):
+        mid = (low + high) / 2
+        final_nw = simulate(mid)
+        if final_nw > target_end:
+            low = mid  # spend more
+        else:
+            high = mid  # spend less
+
+    # Now simulate again to get year-by-year
+    spend_final = (low + high) / 2
+    nw = net_worth
+    net_worth_track = []
+    for _ in range(years):
+        nw = nw * (1 + growth) + income - expenses - spend_final
+        net_worth_track.append(nw)
+
+    return spend_final, net_worth_track
 
 # --- Run Calculation ---
 if st.button("Calculate"):
