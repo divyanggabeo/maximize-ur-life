@@ -17,6 +17,10 @@ inflation = st.slider("Expected inflation rate (%)", 0.0, 10.0, 2.0) / 100
 
 years = lifespan - age
 
+def highlight_net_worth(val):
+    color = 'green' if val > 0 else 'red'
+    return f'color: {color}'
+
 # --- Core Logic ---
 def calculate_sustainable_spending(net_worth, income, expenses, years, growth, inflation):
     real_growth = (1 + growth) / (1 + inflation) - 1
@@ -45,26 +49,35 @@ def calculate_targeted_spending_fixed(net_worth, income, expenses, years, growth
             nw = nw * (1 + growth) + income - expenses - spend
         return nw
 
-    # Use binary search to find spend that ends close to target_end
+    # Binary search to find optimal annual spend
     low = 0
-    high = (net_worth + income * years)  # overshoot range
+    high = net_worth + income * years
     for _ in range(100):
         mid = (low + high) / 2
         final_nw = simulate(mid)
         if final_nw > target_end:
-            low = mid  # spend more
+            low = mid
         else:
-            high = mid  # spend less
+            high = mid
 
-    # Now simulate again to get year-by-year
-    spend_final = (low + high) / 2
+    final_spend = (low + high) / 2
+
+    # Build detailed yearly breakdown
     nw = net_worth
-    net_worth_track = []
-    for _ in range(years):
-        nw = nw * (1 + growth) + income - expenses - spend_final
-        net_worth_track.append(nw)
+    rows = []
+    for i in range(years):
+        nw = nw * (1 + growth) + income - expenses - final_spend
+        rows.append({
+            'Year': i,
+            'Age': i + (lifespan - years),
+            'Income': income,
+            'Expenses': expenses,
+            'Optimized Spending': final_spend,
+            'End Net Worth (Optimized)': nw
+        })
+    df = pd.DataFrame(rows)
+    return final_spend, df
 
-    return spend_final, net_worth_track
 
 # --- Run Calculation ---
 if st.button("Calculate"):
@@ -74,7 +87,8 @@ if st.button("Calculate"):
     final_net = df['End Net Worth'].iloc[-1]
 
     # Optimized spending to near zero
-    spend_to_zero, zero_track = calculate_targeted_spending_fixed(net_worth, income, expenses, years, growth, inflation, 0.1)
+    spend_to_zero, df_zero = calculate_targeted_spending_fixed(net_worth, income, expenses, years, growth, inflation, 0.1)
+
 
 
     # --- Output Summary ---
@@ -98,3 +112,20 @@ if st.button("Calculate"):
         'Net Worth': zero_track
     }).set_index('Year')
     st.line_chart(zero_df)
+
+    # Merge both plans into one table
+    combined_df = df.copy()
+    combined_df = combined_df.rename(columns={
+        'Suggested Spending': 'Sustainable Spending',
+        'End Net Worth': 'End Net Worth (Sustainable)'
+    })
+    combined_df = combined_df.merge(
+        df_zero[['Age', 'Optimized Spending', 'End Net Worth (Optimized)']],
+        on='Age'
+    )
+
+    st.subheader("📋 Year-by-Year Financial Amortization")
+    styled = combined_df.style.format("${:,.0f}", subset=['Income', 'Expenses', 'Sustainable Spending', 'Optimized Spending', 'End Net Worth (Sustainable)', 'End Net Worth (Optimized)'])
+    styled = styled.applymap(highlight_net_worth, subset=['End Net Worth (Sustainable)', 'End Net Worth (Optimized)'])
+
+    st.dataframe(styled, use_container_width=True)
