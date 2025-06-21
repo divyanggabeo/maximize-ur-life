@@ -6,137 +6,137 @@ st.set_page_config(page_title="Maximize UR Life", layout="wide")
 st.title("💡 Maximize UR Life")
 
 # --- User Inputs ---
-col1, col2 = st.columns(2)
-with col1:
-    age = st.number_input("👤 Your current age", min_value=0, max_value=120, value=30)
-with col2:
-    lifespan = st.number_input("⚰️ Expected lifespan", min_value=age + 1, max_value=130, value=85)
+st.markdown("### 🔧 Financial Inputs")
+row1_col1, row1_col2, row1_col3 = st.columns([1, 1, 1])
+with row1_col1:
+    age = st.number_input("👤 Current Age", min_value=0, max_value=120, value=48)
+    household_size = st.radio("🏠 Household Type", ["Individual", "Couple"])
+    retirement_age = st.number_input("🎉 Retirement Age", min_value=age + 1, max_value=130, value=66)
 
-col1, col2 = st.columns(2)
-with col1:
-    net_worth = st.number_input("💰 Current Net Worth", min_value=0, step=1000, value=1_000_000)
-    st.markdown(f"**You entered:** ${net_worth:,.0f}")
-with col2:
-    income = st.number_input("🏦 Annual Income", min_value=0, step=1000, value=200_000)
-    st.markdown(f"**You entered:** ${income:,.0f}")
+with row1_col2:
+    liquid_assets = st.number_input("💵 Liquid Assets", min_value=0, step=1000, value=2_000_000)
+    growth_liquid = st.slider("📈 Liquid Growth Rate (%)", 0.0, 15.0, 5.0) / 100
+    income = st.number_input("🏦 Annual Income (pre-retirement)", min_value=0, step=1000, value=550_000)
 
-col1, col2 = st.columns(2)
-with col1:
-    expenses = st.number_input("🧾 Annual Expenses", min_value=0, step=1000, value=150_000)
-    st.markdown(f"**You entered:** ${expenses:,.0f}")
-with col2:
-    growth = st.slider("📈 Expected investment growth rate (%)", 0.0, 15.0, 5.0) / 100
-    inflation = st.slider("📉 Expected inflation rate (%)", 0.0, 10.0, 2.0) / 100
+with row1_col3:
+    illiquid_assets = st.number_input("🏡 Illiquid Assets", min_value=0, step=1000, value=10_000_000)
+    growth_illiquid = st.slider("🏘️ Illiquid Growth Rate (%)", 0.0, 10.0, 2.0) / 100
+    tax_rate = st.slider("🧾 Tax Rate (%)", 0.0, 50.0, 33.0) / 100
 
+row2_col1, row2_col2, row2_col3 = st.columns([1, 1, 1])
+with row2_col1:
+    household_expense = st.number_input("🏠 Annual Household Expense", min_value=0, step=1000, value=150_000)
+with row2_col2:
+    fun_expense = st.number_input("🎉 Annual Fun Expense", min_value=0, step=1000, value=50_000)
+with row2_col3:
+    travel_expense = st.number_input("✈️ Annual Travel Expense", min_value=0, step=1000, value=25_000)
+
+with st.container():
+    lifespan = st.number_input("⚰️ Expected Lifespan", min_value=age + 1, max_value=130, value=85)
+    inflation = st.slider("📉 Inflation Rate (%)", 0.0, 10.0, 2.0) / 100
+
+social_security = 4018 * 12 * (2 if household_size == "Couple" else 1)
 years = lifespan - age
 
-# --- Sustainable Spending Calculation ---
-def calculate_sustainable_spending(net_worth, income, expenses, years, growth, inflation):
-    real_growth = (1 + growth) / (1 + inflation) - 1
-    pv_factor = sum([1 / ((1 + real_growth) ** t) for t in range(1, years + 1)])
-    sustainable_spend = (net_worth + (income - expenses) * years) / pv_factor
-
+# --- Flexible Spending Simulation ---
+def simulate_spending(liquid_assets, illiquid_assets, income, years, growth_liquid, growth_illiquid, inflation, tax_rate, multiplier, household_expense, fun_expense, travel_expense):
+    l_assets = liquid_assets
+    i_assets = illiquid_assets
     year_data = []
+
+    annual_expenses = household_expense + fun_expense + travel_expense
+    sustainable_spend = (liquid_assets + illiquid_assets) / years
+    spend = sustainable_spend * multiplier
+
     for i in range(years):
         current_age = age + i
-        net_worth = net_worth * (1 + growth) + income - expenses - sustainable_spend
+        business_income = income if current_age < retirement_age else 0
+        ss_income = social_security if current_age >= 66 else 0
+        investment_income = l_assets * growth_liquid
+        other_income = ss_income + investment_income
+        total_income = business_income + other_income
+        tax = total_income * tax_rate
+        total_expenses = annual_expenses + tax
+        net_income = total_income - total_expenses
+        # Update assets accordingly
+        l_assets += investment_income + net_income - spend
+        i_assets *= (1 + growth_illiquid)
+        total_nw = l_assets + i_assets
+
         year_data.append({
             'Age': current_age,
-            'Income': income,
-            'Expenses': expenses,
-            'Sustainable Spending': sustainable_spend,
-            'End Net Worth (Sustainable)': net_worth
+            'Business Income': int(business_income),
+            'Other Income': int(other_income),
+            'Total Income': int(total_income),
+            'Tax': int(tax),
+            'Annual Expenses (Household + Fun + Travel)': int(annual_expenses),
+            'Total Expenses (Including Tax)': int(total_expenses),
+            'Spending Multiplier Spend': int(spend),
+            'Net Income After Expenses': int(net_income),
+            'Added to NW': int(net_income - spend + investment_income),
+            'Liquid Assets': int(l_assets),
+            'Illiquid Assets': int(i_assets),
+            'Total Net Worth': int(total_nw)
         })
-    return sustainable_spend, pd.DataFrame(year_data)
 
-# --- Optimized Spending to Deplete Net Worth ---
-def calculate_targeted_spending_fixed(net_worth, income, expenses, years, growth, inflation, target_pct=0.1):
-    target_end = net_worth * target_pct
+    return pd.DataFrame(year_data), int(spend)
 
-    def simulate(spend):
-        nw = net_worth
-        for _ in range(years):
-            nw = nw * (1 + growth) + income - expenses - spend
-        return nw
-
-    low = 0
-    high = net_worth + income * years
-    for _ in range(100):
+# --- Find Max Spending Multiplier ---
+def find_max_spending_multiplier(liquid_assets, illiquid_assets, income, years, growth_liquid, growth_illiquid, inflation, tax_rate, household_expense, fun_expense, travel_expense):
+    low, high = 0, 10
+    for _ in range(50):
         mid = (low + high) / 2
-        final_nw = simulate(mid)
-        if final_nw > target_end:
+        df, _ = simulate_spending(liquid_assets, illiquid_assets, income, years, growth_liquid, growth_illiquid, inflation, tax_rate, mid, household_expense, fun_expense, travel_expense)
+        if df.iloc[-1]['Total Net Worth'] > 100_000:
             low = mid
         else:
             high = mid
-
-    final_spend = (low + high) / 2
-
-    # Year-by-year tracking
-    nw = net_worth
-    rows = []
-    for i in range(years):
-        current_age = age + i
-        nw = nw * (1 + growth) + income - expenses - final_spend
-        rows.append({
-            'Age': current_age,
-            'Income': income,
-            'Expenses': expenses,
-            'Optimized Spending': final_spend,
-            'End Net Worth (Optimized)': nw
-        })
-    return final_spend, pd.DataFrame(rows)
+    return round((low + high) / 2, 2)
 
 # --- Run Calculation ---
 if st.button("Calculate"):
-
-    # 1. Sustainable Spending Plan
-    spend_sustainable, df_sustainable = calculate_sustainable_spending(
-        net_worth, income, expenses, years, growth, inflation
-    )
-
-    # 2. Optimized Spending Plan
-    spend_optimized, df_optimized = calculate_targeted_spending_fixed(
-        net_worth, income, expenses, years, growth, inflation, 0.1
-    )
-
-    # 3. Summary
-    col1, col2 = st.columns(2)
-    col1.metric("💵 Sustainable Spending / year", f"${spend_sustainable:,.0f}")
-    col2.metric("🔥 Optimized Spending / year", f"${spend_optimized:,.0f}")
-
-    st.warning(f"💼 Ending NW (sustainable): ${df_sustainable.iloc[-1]['End Net Worth (Sustainable)']:,.0f}")
-    st.warning(f"🏁 Ending NW (optimized): ${df_optimized.iloc[-1]['End Net Worth (Optimized)']:,.0f}")
-    st.info(f"🧾 Optimized to die nearly broke (10% left): ${spend_optimized:,.0f}/year")
-    st.warning(f"💼 Ending NW (sustainable): ${df_sustainable.iloc[-1]['End Net Worth (Sustainable)']:,.0f}")
-    st.warning(f"🏁 Ending NW (optimized): ${df_optimized.iloc[-1]['End Net Worth (Optimized)']:,.0f}")
-
-    # --- Chart: Sustainable Spending
-    st.subheader("📈 Net Worth Projection – Sustainable Spending")
-    st.line_chart(df_sustainable.set_index('Age')[['End Net Worth (Sustainable)']])
-
-    # --- Chart: Optimized Spend-It-All
-    st.subheader("💀 Spend It All Strategy")
-    st.line_chart(df_optimized.set_index('Age')[['End Net Worth (Optimized)']])
-
-    # --- Combined Table
-    st.subheader("📋 Year-by-Year Financial Table")
-
-    df_combined = pd.merge(
-        df_sustainable,
-        df_optimized[['Age', 'Optimized Spending', 'End Net Worth (Optimized)']],
-        on='Age'
-    )
-
-    def highlight(val):
-        color = 'green' if val > 0 else 'red'
-        return f'color: {color}'
-
-    styled = df_combined.style.format("${:,.0f}", subset=[
-        'Income', 'Expenses', 'Sustainable Spending',
-        'Optimized Spending', 'End Net Worth (Sustainable)', 'End Net Worth (Optimized)'
-    ])
-    styled = styled.applymap(highlight, subset=[
-        'End Net Worth (Sustainable)', 'End Net Worth (Optimized)'
+    best_multiplier = find_max_spending_multiplier(liquid_assets, illiquid_assets, income, years,
+                                                   growth_liquid, growth_illiquid, inflation, tax_rate,
+                                                   household_expense, fun_expense, travel_expense)
+    
+    # Define step size relative to best_multiplier, but with a floor to avoid negative multipliers
+    step = max(0.1, best_multiplier * 0.1)  # at least 0.1 or 10% of best_multiplier
+    
+    # Create multipliers: two below and two above the best multiplier
+    multipliers = sorted([
+        max(0.01, best_multiplier - 2*step),
+        max(0.01, best_multiplier - step),
+        best_multiplier + step,
+        best_multiplier + 2*step,
     ])
 
-    st.dataframe(styled, use_container_width=True)
+    results = {}
+    for m in multipliers:
+        df, spend = simulate_spending(liquid_assets, illiquid_assets, income, years,
+                                      growth_liquid, growth_illiquid, inflation, tax_rate, m,
+                                      household_expense, fun_expense, travel_expense)
+        results[m] = (df, spend)
+
+    df_best, best_spend = simulate_spending(liquid_assets, illiquid_assets, income, years,
+                                            growth_liquid, growth_illiquid, inflation, tax_rate, best_multiplier,
+                                            household_expense, fun_expense, travel_expense)
+
+    st.subheader("📈 Spend vs Net Worth Change (Scenarios)")
+    for m, (df, spend) in results.items():
+        with st.expander(f"Scenario: {m:.2f}x Spending  |  ${spend:,.0f} / year"):
+            st.line_chart(df.set_index('Age')[[
+                'Spending Multiplier Spend', 
+                'Added to NW', 
+                'Total Net Worth',
+                'Illiquid Assets'  # Added illiquid assets here
+            ]], use_container_width=True)
+            st.dataframe(df.style.format("${:,.0f}"), use_container_width=True)
+
+    st.subheader("🏁 Optimal Quality-of-Life Spending")
+    st.success(f"Most aggressive sustainable multiplier: {best_multiplier:.2f}x  |  ${best_spend:,.0f} / year")
+    st.line_chart(df_best.set_index('Age')[[
+        'Spending Multiplier Spend', 
+        'Total Net Worth',
+        'Illiquid Assets'   # Added illiquid assets here as well
+    ]])
+    st.dataframe(df_best.style.format("${:,.0f}"), use_container_width=True)
